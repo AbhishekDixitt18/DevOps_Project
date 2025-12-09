@@ -28,8 +28,9 @@ mkdir -p "$(dirname "$INVENTORY_FILE")"
 
 cat > "$INVENTORY_FILE" <<EOF
 [aws]
-$INSTANCE_IP ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY ansible_python_interpreter=/usr/bin/python3
+$INSTANCE_IP ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY ansible_python_interpreter=/usr/bin/python3 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 EOF
 
 echo "Inventory created successfully:"
 cat "$INVENTORY_FILE"
+
