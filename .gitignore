@@ -1,0 +1,10 @@
+master-key.pem
+master-key.pem
+*.pem
+terraform.tfstate
+terraform.tfstate.backup
+master-key.pem
+*.pem
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
