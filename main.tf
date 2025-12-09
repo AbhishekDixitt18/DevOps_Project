@@ -52,13 +52,14 @@ resource "aws_security_group" "ssh" {
   name_prefix = "tf-sg-ssh-grafana-"
   description = "Allow SSH and Grafana inbound"
 
-  ingress {
-    description = "SSH"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = [local.ssh_cidr]
-  }
+ingress {
+  description = "SSH"
+  from_port   = 22
+  to_port     = 22
+  protocol    = "tcp"
+  cidr_blocks = ["0.0.0.0/0"]
+}
+
 
   ingress {
     description = "Grafana"
