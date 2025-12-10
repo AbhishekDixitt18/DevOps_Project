@@ -19,14 +19,16 @@ variable "instance_type" {
   default = "t2.micro"
 }
 
-variable "key_name" {
+variable "ssh_cidr" {
   type    = string
   default = ""
 }
 
-variable "ssh_cidr" {
+# NEW — Path to SSH private key
+variable "private_key_path" {
   type    = string
-  default = ""
+  default = "/root/.ssh/master-key.pem"
+
 }
 
 data "http" "my_ip" {
@@ -50,8 +52,9 @@ data "aws_ami" "ubuntu_focal" {
 
 resource "aws_security_group" "ssh" {
   name_prefix = "tf-sg-ssh-grafana-"
-  description = "Allow SSH and Grafana inbound"
+  description = "Allow SSH, Grafana, Prometheus inbound"
 
+ HEAD
 ingress {
   description = "SSH"
   from_port   = 22
@@ -62,13 +65,23 @@ ingress {
 
 
   ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+
+  }
+ 0db8835 (Updated Terraform, Ansible inventory script, and outputs)
+
+  ingress {
     description = "Grafana"
     from_port   = 3000
     to_port     = 3000
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  
+
   ingress {
     description = "Prometheus"
     from_port   = 9090
@@ -89,7 +102,7 @@ resource "aws_instance" "example" {
   count         = var.instance_count
   ami           = data.aws_ami.ubuntu_focal.id
   instance_type = var.instance_type
-  key_name      = var.key_name != "" ? var.key_name : null
+  key_name      = "master-key"
 
   vpc_security_group_ids = [aws_security_group.ssh.id]
 
@@ -105,8 +118,10 @@ resource "null_resource" "ansible_provision" {
 
   provisioner "local-exec" {
     interpreter = ["/bin/bash", "-c"]
-    command     = <<EOT
-./scripts/generate_ansible_inventory.sh "$ANSIBLE_PRIVATE_KEY" "./ansible/inventory.ini" && \
+
+    # FIXED — Use PATH, not CONTENT
+    command = <<EOT
+./scripts/generate_ansible_inventory.sh "${var.private_key_path}" "./ansible/inventory.ini" && \
 ansible-playbook -i ./ansible/inventory.ini ./ansible/playbook.yml
 EOT
   }
@@ -115,8 +130,4 @@ EOT
     aws_instance.example,
     aws_security_group.ssh
   ]
-}
-
-output "instance_public_ip" {
-  value = aws_instance.example[0].public_ip
 }

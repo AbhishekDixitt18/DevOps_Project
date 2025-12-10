@@ -1,10 +1,9 @@
-master-key.pem
-master-key.pem
 *.pem
-terraform.tfstate
-terraform.tfstate.backup
-master-key.pem
-*.pem
-terraform.tfstate
-terraform.tfstate.backup
+*.key
+*.pub
+*.tfstate
+*.tfstate.*
 .terraform/
+ansible/inventory.ini
+aws_hosts
+
