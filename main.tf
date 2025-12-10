@@ -26,9 +26,9 @@ variable "ssh_cidr" {
 
 # Path to SSH private key
 variable "private_key_path" {
-  type    = string
-  default = "/root/.ssh/master-key.pem"
+  type = string
 }
+
 
 data "http" "my_ip" {
   url = "https://checkip.amazonaws.com/"
