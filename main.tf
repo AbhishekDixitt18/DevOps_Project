@@ -24,11 +24,10 @@ variable "ssh_cidr" {
   default = ""
 }
 
-# NEW — Path to SSH private key
+# Path to SSH private key
 variable "private_key_path" {
   type    = string
   default = "/root/.ssh/master-key.pem"
-
 }
 
 data "http" "my_ip" {
@@ -54,26 +53,16 @@ resource "aws_security_group" "ssh" {
   name_prefix = "tf-sg-ssh-grafana-"
   description = "Allow SSH, Grafana, Prometheus inbound"
 
- HEAD
-ingress {
-  description = "SSH"
-  from_port   = 22
-  to_port     = 22
-  protocol    = "tcp"
-  cidr_blocks = ["0.0.0.0/0"]
-}
-
-
+  # SSH
   ingress {
     description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-
   }
- 0db8835 (Updated Terraform, Ansible inventory script, and outputs)
 
+  # Grafana
   ingress {
     description = "Grafana"
     from_port   = 3000
@@ -82,6 +71,7 @@ ingress {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Prometheus
   ingress {
     description = "Prometheus"
     from_port   = 9090
@@ -90,6 +80,7 @@ ingress {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Outbound (all)
   egress {
     from_port   = 0
     to_port     = 0
@@ -119,7 +110,6 @@ resource "null_resource" "ansible_provision" {
   provisioner "local-exec" {
     interpreter = ["/bin/bash", "-c"]
 
-    # FIXED — Use PATH, not CONTENT
     command = <<EOT
 ./scripts/generate_ansible_inventory.sh "${var.private_key_path}" "./ansible/inventory.ini" && \
 ansible-playbook -i ./ansible/inventory.ini ./ansible/playbook.yml
