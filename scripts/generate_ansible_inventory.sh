@@ -25,7 +25,6 @@ INSTANCE_IP=$(terraform output -raw instance_public_ip || true)
 
 if [[ -z "$INSTANCE_IP" ]]; then
   echo "ERROR: Terraform output 'instance_public_ip' is empty or missing."
-  echo "Run: terraform apply FIRST."
   exit 1
 fi
 
@@ -33,13 +32,8 @@ mkdir -p "$(dirname "$INVENTORY_FILE")"
 
 cat > "$INVENTORY_FILE" <<EOF
 [aws]
- HEAD
-$INSTANCE_IP ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY ansible_python_interpreter=/usr/bin/python3 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
-
-$INSTANCE_IP ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY_PATH ansible_python_interpreter=/usr/bin/python3
- 0db8835 (Updated Terraform, Ansible inventory script, and outputs)
+$INSTANCE_IP ansible_user=ubuntu ansible_ssh_private_key_file=$PRIVATE_KEY_PATH ansible_python_interpreter=/usr/bin/python3 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 EOF
 
 echo "Inventory created successfully:"
 cat "$INVENTORY_FILE"
-
