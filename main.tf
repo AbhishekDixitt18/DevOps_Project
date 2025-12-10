@@ -24,11 +24,10 @@ variable "ssh_cidr" {
   default = ""
 }
 
-# Path to SSH private key
+# Path to SSH private key (Jenkins will pass /tmp/ansible_key.pem)
 variable "private_key_path" {
   type = string
 }
-
 
 data "http" "my_ip" {
   url = "https://checkip.amazonaws.com/"
@@ -53,7 +52,6 @@ resource "aws_security_group" "ssh" {
   name_prefix = "tf-sg-ssh-grafana-"
   description = "Allow SSH, Grafana, Prometheus inbound"
 
-  # SSH
   ingress {
     description = "SSH"
     from_port   = 22
@@ -62,7 +60,6 @@ resource "aws_security_group" "ssh" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Grafana
   ingress {
     description = "Grafana"
     from_port   = 3000
@@ -71,7 +68,6 @@ resource "aws_security_group" "ssh" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Prometheus
   ingress {
     description = "Prometheus"
     from_port   = 9090
@@ -80,7 +76,6 @@ resource "aws_security_group" "ssh" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Outbound (all)
   egress {
     from_port   = 0
     to_port     = 0
@@ -111,7 +106,19 @@ resource "null_resource" "ansible_provision" {
     interpreter = ["/bin/bash", "-c"]
 
     command = <<EOT
-./scripts/generate_ansible_inventory.sh "${var.private_key_path}" "./ansible/inventory.ini" && \
+echo "Waiting for EC2 SSH to become available..."
+sleep 40
+
+EC2_IP=$(terraform output -raw instance_public_ip)
+
+echo "Testing SSH connection to $EC2_IP ..."
+ssh -o StrictHostKeyChecking=no -i "${var.private_key_path}" ubuntu@$EC2_IP "echo SSH OK" || {
+    echo "SSH still not ready. Waiting more..."
+    sleep 20
+}
+
+./scripts/generate_ansible_inventory.sh "${var.private_key_path}" "./ansible/inventory.ini"
+
 ansible-playbook -i ./ansible/inventory.ini ./ansible/playbook.yml
 EOT
   }
