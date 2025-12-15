@@ -5,5 +5,4 @@
 *.tfstate.*
 .terraform/
 ansible/inventory.ini
-aws_hosts
 
