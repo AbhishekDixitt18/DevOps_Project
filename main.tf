@@ -9,6 +9,10 @@ provider "aws" {
   region = "us-east-1"
 }
 
+#####################
+# VARIABLES
+#####################
+
 variable "instance_count" {
   type    = number
   default = 1
@@ -24,10 +28,13 @@ variable "ssh_cidr" {
   default = ""
 }
 
-# Path to SSH private key (Jenkins will pass /tmp/ansible_key.pem)
 variable "private_key_path" {
   type = string
 }
+
+#####################
+# DATA SOURCES
+#####################
 
 data "http" "my_ip" {
   url = "https://checkip.amazonaws.com/"
@@ -47,6 +54,10 @@ data "aws_ami" "ubuntu_focal" {
     values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
   }
 }
+
+#####################
+# SECURITY GROUP
+#####################
 
 resource "aws_security_group" "ssh" {
   name_prefix = "tf-sg-ssh-grafana-"
@@ -84,6 +95,10 @@ resource "aws_security_group" "ssh" {
   }
 }
 
+#####################
+# EC2 INSTANCE
+#####################
+
 resource "aws_instance" "example" {
   count         = var.instance_count
   ami           = data.aws_ami.ubuntu_focal.id
@@ -96,6 +111,10 @@ resource "aws_instance" "example" {
     Name = "tf-example-${count.index + 1}"
   }
 }
+
+#####################
+# ANSIBLE PROVISION
+#####################
 
 resource "null_resource" "ansible_provision" {
 
@@ -112,22 +131,14 @@ sleep 60
 EC2_IP=${aws_instance.example[0].public_ip}
 
 echo "Testing SSH connection to $EC2_IP ..."
-ssh -o StrictHostKeyChecking=no -i "/tmp/ansible_key.pem" ubuntu@$EC2_IP "echo SSH OK" || {
+ssh -o StrictHostKeyChecking=no -i "${var.private_key_path}" ubuntu@$EC2_IP "echo SSH OK" || {
     echo "SSH still not ready. Waiting more..."
     sleep 30
 }
 
-./scripts/generate_ansible_inventory.sh "/tmp/ansible_key.pem" "./ansible/inventory.ini"
+./scripts/generate_ansible_inventory.sh "${var.private_key_path}" "./ansible/inventory.ini"
 
 ansible-playbook -i ./ansible/inventory.ini ./ansible/playbook.yml
 EOT
   }
-}
-
-
-
-  depends_on = [
-    aws_instance.example,
-    aws_security_group.ssh
-  ]
 }
