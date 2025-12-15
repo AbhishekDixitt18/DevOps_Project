@@ -98,30 +98,33 @@ resource "aws_instance" "example" {
 }
 
 resource "null_resource" "ansible_provision" {
-  triggers = {
-    instance_ips = join(",", aws_instance.example[*].public_ip)
-  }
+
+  depends_on = [
+    aws_instance.example,
+    aws_security_group.ssh
+  ]
 
   provisioner "local-exec" {
-    interpreter = ["/bin/bash", "-c"]
-
     command = <<EOT
 echo "Waiting for EC2 SSH to become available..."
-sleep 40
+sleep 60
 
-EC2_IP=$(terraform output -raw instance_public_ip)
+EC2_IP=${aws_instance.example[0].public_ip}
 
 echo "Testing SSH connection to $EC2_IP ..."
-ssh -o StrictHostKeyChecking=no -i "${var.private_key_path}" ubuntu@$EC2_IP "echo SSH OK" || {
+ssh -o StrictHostKeyChecking=no -i "/tmp/ansible_key.pem" ubuntu@$EC2_IP "echo SSH OK" || {
     echo "SSH still not ready. Waiting more..."
-    sleep 20
+    sleep 30
 }
 
-./scripts/generate_ansible_inventory.sh "${var.private_key_path}" "./ansible/inventory.ini"
+./scripts/generate_ansible_inventory.sh "/tmp/ansible_key.pem" "./ansible/inventory.ini"
 
 ansible-playbook -i ./ansible/inventory.ini ./ansible/playbook.yml
 EOT
   }
+}
+
+
 
   depends_on = [
     aws_instance.example,
