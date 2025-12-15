@@ -54,7 +54,7 @@ pipeline {
                 }
             }
         }
-#terraform apply
+
         stage('Terraform Apply') {
             steps {
                 withCredentials([
