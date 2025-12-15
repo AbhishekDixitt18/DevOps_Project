@@ -5,4 +5,5 @@
 *.tfstate.*
 .terraform/
 ansible/inventory.ini
+outputs edited
 
