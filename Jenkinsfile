@@ -1,143 +1,220 @@
 pipeline {
     agent any
-
+    
     environment {
-        TF_IN_AUTOMATION    = "true"
-        AWS_DEFAULT_REGION = "us-east-1"
+        AWS_REGION = 'us-east-1'
+        TF_IN_AUTOMATION = 'true'
+        PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
+        ANSIBLE_HOST_KEY_CHECKING = 'False'
     }
-
+    
     stages {
 
-        stage('Checkout') {
+        // ========================================
+        // STAGE 1: CODE CHECKOUT
+        // ========================================
+        stage('1️⃣ Checkout Code') {
             steps {
+                echo '📥 Checking out code from GitHub...'
                 checkout scm
             }
         }
-
-        stage('Prepare SSH Key') {
+        
+        // ========================================
+        // STAGE 2: SETUP SSH KEY (JENKINS CREDENTIAL)
+        // ========================================
+        stage('2️⃣ Setup SSH Key') {
             steps {
-                withCredentials([sshUserPrivateKey(
-                    credentialsId: 'ansible-ssh-key',
-                    keyFileVariable: 'SSH_KEY'
-                )]) {
-                    sh '''
-                        cp $SSH_KEY /tmp/ansible_key.pem
-                        chmod 600 /tmp/ansible_key.pem
-                    '''
-                }
-            }
-        }
-
-        stage('Terraform Init') {
-            steps {
+                echo '🔑 Setting up SSH key from Jenkins credentials...'
                 withCredentials([
-                    string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    sh 'terraform init -no-color'
-                }
-            }
-        }
-
-        stage('Terraform Plan') {
-            steps {
-                withCredentials([
-                    string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    sh '''
-                        terraform plan -no-color \
-                        -out=tfplan \
-                        -var="private_key_path=/tmp/ansible_key.pem"
-                    '''
-                }
-            }
-        }
-
-        stage('Approval: Terraform Apply') {
-            steps {
-                script {
-                    def decision = input(
-                        message: 'Terraform plan completed. Apply changes?',
-                        parameters: [
-                            choice(name: 'ACTION', choices: ['Apply', 'Abort'], description: '')
-                        ]
+                    sshUserPrivateKey(
+                        credentialsId: 'ansible-ssh-key',
+                        keyFileVariable: 'SSH_KEY'
                     )
-
-                    if (decision == 'Abort') {
-                        error "Terraform Apply aborted by user"
+                ]) {
+                    sh '''
+                        cp "$SSH_KEY" devops.pem
+                        chmod 600 devops.pem
+                        echo "✅ SSH key prepared successfully"
+                    '''
+                }
+            }
+        }
+        
+        // ========================================
+        // STAGE 3: TERRAFORM INITIALIZATION
+        // ========================================
+        stage('3️⃣ Terraform Init') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    dir('terraform') {
+                        echo '🔧 Initializing Terraform...'
+                        sh 'terraform init'
                     }
                 }
             }
         }
-
-        stage('Terraform Apply') {
+        
+        // ========================================
+        // STAGE 4: TERRAFORM PLAN
+        // ========================================
+        stage('4️⃣ Terraform Plan') {
             steps {
                 withCredentials([
                     string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
                     string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
-                    sh '''
-                        terraform apply -auto-approve -no-color tfplan
-                    '''
-                }
-            }
-        }
-
-        stage('Approval: Ansible Configuration') {
-            steps {
-                script {
-                    def decision = input(
-                        message: 'Run Ansible configuration?',
-                        parameters: [
-                            choice(name: 'ACTION', choices: ['Apply', 'Abort'], description: '')
-                        ]
-                    )
-
-                    if (decision == 'Abort') {
-                        echo "Ansible execution skipped by user"
-                        currentBuild.result = 'SUCCESS'
-                        return
+                    dir('terraform') {
+                        sh '''
+                            terraform plan -out=tfplan
+                            echo ""
+                            echo "=== Plan Summary ==="
+                            terraform show tfplan | grep -E "Plan:|No changes"
+                        '''
                     }
                 }
             }
         }
-
-        stage('Run Ansible') {
+        
+        // ========================================
+        // STAGE 5: APPROVE TERRAFORM
+        // ========================================
+        stage('5️⃣ Approve Terraform Plan') {
+            steps {
+                input message: 'Review Terraform plan. Proceed with infrastructure creation?',
+                      ok: 'Yes, Create Infrastructure'
+            }
+        }
+        
+        // ========================================
+        // STAGE 6: TERRAFORM APPLY
+        // ========================================
+        stage('6️⃣ Terraform Apply - Infrastructure') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    dir('terraform') {
+                        sh 'terraform apply -auto-approve tfplan'
+                    }
+                }
+            }
+        }
+        
+        // ========================================
+        // STAGE 7: WAIT FOR INSTANCES
+        // ========================================
+        stage('7️⃣ Wait for AWS Instances') {
             steps {
                 sh '''
-                    ansible-playbook -i ansible/inventory.ini \
-                    ansible/playbook.yml \
-                    --private-key /tmp/ansible_key.pem
+                    sleep 30
+                    cd playbooks
+                    while IFS= read -r ip; do
+                        [[ $ip =~ ^[0-9]+\\. ]] || continue
+                        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+                            -i ../devops.pem ubuntu@$ip "echo Connected"
+                    done < aws_hosts
                 '''
             }
         }
-    }
-
-    post {
-        always {
-            script {
-                def destroyChoice = input(
-                    message: 'Do you want to destroy the infrastructure?',
-                    parameters: [
-                        choice(name: 'DESTROY', choices: ['No', 'Yes'], description: '')
-                    ]
-                )
-
-                if (destroyChoice == 'Yes') {
-                    withCredentials([
-                        string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
-                        string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY')
-                    ]) {
-                        sh '''
-                            terraform destroy -auto-approve -no-color \
-                            -var="private_key_path=/tmp/ansible_key.pem"
-                        '''
-                    }
-                } else {
-                    echo "Infrastructure retained"
+        
+        // ========================================
+        // STAGE 8: VALIDATE ANSIBLE INVENTORY
+        // ========================================
+        stage('8️⃣ Validate Ansible Inventory') {
+            steps {
+                dir('playbooks') {
+                    sh '''
+                        cat aws_hosts
+                        ansible --version
+                        ANSIBLE_CONFIG=./ansible.cfg ansible all -i aws_hosts -m ping || true
+                    '''
                 }
             }
+        }
+        
+        // ========================================
+        // STAGE 9: APPROVE ANSIBLE
+        // ========================================
+        stage('9️⃣ Approve Ansible Configuration') {
+            steps {
+                input message: 'Proceed with Grafana & Prometheus installation?',
+                      ok: 'Yes, Run Ansible'
+            }
+        }
+        
+        // ========================================
+        // STAGE 10: INSTALL GRAFANA
+        // ========================================
+        stage('🔟 Ansible - Install Grafana') {
+            steps {
+                dir('playbooks') {
+                    sh 'ANSIBLE_CONFIG=./ansible.cfg ansible-playbook -i aws_hosts grafana.yaml -v'
+                }
+            }
+        }
+        
+        // ========================================
+        // STAGE 11: INSTALL PROMETHEUS
+        // ========================================
+        stage('1️⃣1️⃣ Ansible - Install Prometheus') {
+            steps {
+                dir('playbooks') {
+                    sh 'ANSIBLE_CONFIG=./ansible.cfg ansible-playbook -i aws_hosts install-prometheus.yaml -v'
+                }
+            }
+        }
+        
+        // ========================================
+        // STAGE 12: VERIFY DEPLOYMENT
+        // ========================================
+        stage('1️⃣2️⃣ Verify Deployment') {
+            steps {
+                dir('terraform') {
+                    sh '''
+                        terraform output
+                    '''
+                }
+            }
+        }
+        
+        // ========================================
+        // STAGE 13: APPROVE DESTROY
+        // ========================================
+        stage('1️⃣3️⃣ Approve Destroy') {
+            steps {
+                input message: '⚠ Destroy all infrastructure?',
+                      ok: 'Yes, Destroy Everything'
+            }
+        }
+        
+        // ========================================
+        // STAGE 14: TERRAFORM DESTROY
+        // ========================================
+        stage('1️⃣4️⃣ Terraform Destroy') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    dir('terraform') {
+                        sh 'terraform destroy -auto-approve'
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            sh '''
+                rm -f devops.pem || true
+                rm -f terraform/tfplan || true
+            '''
         }
     }
 }
