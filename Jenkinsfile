@@ -4,8 +4,8 @@ pipeline {
     environment {
         AWS_REGION = 'us-east-1'
         TF_IN_AUTOMATION = 'true'
-        ANSIBLE_HOST_KEY_CHECKING = 'False'
         TF_INPUT = 'false'
+        ANSIBLE_HOST_KEY_CHECKING = 'False'
     }
 
     options {
@@ -16,7 +16,7 @@ pipeline {
     stages {
 
         // =====================================================
-        // STAGE 1: CHECKOUT CODE
+        // 1️⃣ CHECKOUT CODE
         // =====================================================
         stage('1️⃣ Checkout Code') {
             steps {
@@ -25,7 +25,7 @@ pipeline {
         }
 
         // =====================================================
-        // STAGE 2: SETUP SSH KEY (master-key.pem)
+        // 2️⃣ SETUP SSH KEY
         // =====================================================
         stage('2️⃣ Setup SSH Key') {
             steps {
@@ -38,14 +38,14 @@ pipeline {
                     sh '''
                         cp "$SSH_KEY" devops.pem
                         chmod 600 devops.pem
-                        echo "SSH key ready"
+                        echo "✅ SSH key ready"
                     '''
                 }
             }
         }
 
         // =====================================================
-        // STAGE 3: TERRAFORM INIT
+        // 3️⃣ TERRAFORM INIT
         // =====================================================
         stage('3️⃣ Terraform Init') {
             steps {
@@ -62,7 +62,7 @@ pipeline {
         }
 
         // =====================================================
-        // STAGE 4: TERRAFORM PLAN (FIXED private_key_path)
+        // 4️⃣ TERRAFORM PLAN
         // =====================================================
         stage('4️⃣ Terraform Plan') {
             steps {
@@ -72,15 +72,15 @@ pipeline {
                 ]) {
                     sh '''
                         terraform plan \
-                        -var="private_key_path=${WORKSPACE}/devops.pem" \
-                        -out=tfplan
+                          -var="private_key_path=${WORKSPACE}/devops.pem" \
+                          -out=tfplan
                     '''
                 }
             }
         }
 
         // =====================================================
-        // STAGE 5: APPROVE APPLY
+        // 5️⃣ APPROVE APPLY
         // =====================================================
         stage('5️⃣ Approve Terraform Apply') {
             steps {
@@ -89,7 +89,7 @@ pipeline {
         }
 
         // =====================================================
-        // STAGE 6: TERRAFORM APPLY
+        // 6️⃣ TERRAFORM APPLY
         // =====================================================
         stage('6️⃣ Terraform Apply') {
             steps {
@@ -99,49 +99,69 @@ pipeline {
                 ]) {
                     sh '''
                         terraform apply \
-                        -var="private_key_path=${WORKSPACE}/devops.pem" \
-                        -auto-approve tfplan
+                          -var="private_key_path=${WORKSPACE}/devops.pem" \
+                          -auto-approve tfplan
                     '''
                 }
             }
         }
 
         // =====================================================
-        // STAGE 7: WAIT FOR EC2 SSH
+        // 6️⃣.1️⃣ GENERATE ANSIBLE INVENTORY (SINGLE SOURCE OF TRUTH)
         // =====================================================
-        stage('7️⃣ Wait for EC2 SSH') {
+        stage('6️⃣.1️⃣ Generate Ansible Inventory') {
             steps {
                 sh '''
-                    echo "Waiting for EC2 SSH..."
-                    sleep 30
+                    EC2_IP=$(terraform output -raw instance_public_ip)
 
-                    while IFS= read -r ip; do
-                        [[ $ip =~ ^[0-9]+\\. ]] || continue
-                        echo "Checking SSH on $ip"
-                        ssh -o StrictHostKeyChecking=no \
-                            -o ConnectTimeout=5 \
-                            -i devops.pem ubuntu@$ip "echo SSH Ready"
-                    done < aws_hosts
+                    mkdir -p ansible
+                    rm -f ansible/inventory.ini
+
+                    cat > ansible/inventory.ini <<EOF
+[aws]
+${EC2_IP} ansible_user=ubuntu ansible_ssh_private_key_file=${WORKSPACE}/devops.pem ansible_python_interpreter=/usr/bin/python3 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+EOF
+
+                    echo "✅ Inventory generated:"
+                    cat ansible/inventory.ini
                 '''
             }
         }
 
         // =====================================================
-        // STAGE 8: VALIDATE ANSIBLE INVENTORY
+        // 7️⃣ WAIT FOR EC2 SSH
         // =====================================================
-        stage('8️⃣ Validate Ansible Inventory') {
+        stage('7️⃣ Wait for EC2 SSH') {
             steps {
-                dir('ansible') {
-                    sh '''
-                        ansible --version
-                        ansible all -i inventory.ini -m ping
-                    '''
-                }
+                sh '''
+                    EC2_IP=$(terraform output -raw instance_public_ip)
+                    echo "⏳ Waiting for SSH on $EC2_IP..."
+
+                    for i in {1..12}; do
+                        ssh -o StrictHostKeyChecking=no \
+                            -o ConnectTimeout=5 \
+                            -i devops.pem ubuntu@$EC2_IP "echo SSH READY" && break
+                        sleep 10
+                    done
+                '''
             }
         }
 
         // =====================================================
-        // STAGE 9: APPROVE ANSIBLE
+        // 8️⃣ VALIDATE ANSIBLE INVENTORY
+        // =====================================================
+        stage('8️⃣ Validate Ansible Inventory') {
+            steps {
+                sh '''
+                    ansible --version
+                    ansible-inventory -i ansible/inventory.ini --list
+                    ansible all -i ansible/inventory.ini -m ping
+                '''
+            }
+        }
+
+        // =====================================================
+        // 9️⃣ APPROVE ANSIBLE
         // =====================================================
         stage('9️⃣ Approve Ansible') {
             steps {
@@ -150,22 +170,20 @@ pipeline {
         }
 
         // =====================================================
-        // STAGE 10: RUN ANSIBLE PLAYBOOK
+        // 🔟 RUN ANSIBLE PLAYBOOK
         // =====================================================
         stage('🔟 Run Ansible Playbook') {
             steps {
-                dir('ansible') {
-                    sh '''
-                        ansible-playbook \
-                        -i inventory.ini \
-                        playbook.yml -v
-                    '''
-                }
+                sh '''
+                    ansible-playbook \
+                      -i ansible/inventory.ini \
+                      ansible/playbook.yml -v
+                '''
             }
         }
 
         // =====================================================
-        // STAGE 11: TERRAFORM OUTPUT
+        // 1️⃣1️⃣ TERRAFORM OUTPUT
         // =====================================================
         stage('1️⃣1️⃣ Terraform Output') {
             steps {
@@ -174,7 +192,7 @@ pipeline {
         }
 
         // =====================================================
-        // STAGE 12: APPROVE DESTROY
+        // 1️⃣2️⃣ APPROVE DESTROY
         // =====================================================
         stage('1️⃣2️⃣ Approve Destroy') {
             steps {
@@ -183,7 +201,7 @@ pipeline {
         }
 
         // =====================================================
-        // STAGE 13: TERRAFORM DESTROY
+        // 1️⃣3️⃣ TERRAFORM DESTROY
         // =====================================================
         stage('1️⃣3️⃣ Terraform Destroy') {
             steps {
@@ -193,8 +211,8 @@ pipeline {
                 ]) {
                     sh '''
                         terraform destroy \
-                        -var="private_key_path=${WORKSPACE}/devops.pem" \
-                        -auto-approve
+                          -var="private_key_path=${WORKSPACE}/devops.pem" \
+                          -auto-approve
                     '''
                 }
             }
@@ -207,8 +225,7 @@ pipeline {
     post {
         always {
             sh '''
-                rm -f devops.pem || true
-                rm -f tfplan || true
+                rm -f devops.pem tfplan || true
             '''
         }
 
