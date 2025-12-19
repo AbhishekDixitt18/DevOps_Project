@@ -1,0 +1,9 @@
+- name: Test for Grafana access
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: grafana
+      ansible.builtin.uri:
+        url: http://{{ inventory_hostname }}:3000
+        follow_redirects: none
+        status_code: [302]

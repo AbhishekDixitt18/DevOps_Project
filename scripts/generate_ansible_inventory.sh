@@ -1,15 +1,19 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 KEY_PATH="$1"
 INVENTORY_FILE="$2"
-
-echo "Fetching EC2 public IP from Terraform output..."
-
-EC2_IP=$(terraform output -raw instance_public_ip)
+# Optional third arg: EC2 public IP (passed from Terraform during apply)
+EC2_IP="${3-}"
 
 if [ -z "$EC2_IP" ]; then
-  echo "ERROR: Failed to fetch EC2 public IP"
+  echo "Fetching EC2 public IP from Terraform output..."
+  # Try to read terraform output; suppress errors and fallback if missing
+  EC2_IP=$(terraform output -raw instance_public_ip 2>/dev/null || true)
+fi
+
+if [ -z "$EC2_IP" ]; then
+  echo "ERROR: Failed to determine EC2 public IP"
   exit 1
 fi
 

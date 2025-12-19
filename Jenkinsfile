@@ -80,9 +80,14 @@ pipeline {
         }
 
         // =====================================================
-        // 5️⃣ APPROVE APPLY
+        // 5️⃣ APPROVE APPLY (only on dev branch)
         // =====================================================
         stage('5️⃣ Approve Terraform Apply') {
+            when {
+                expression {
+                    return (env.BRANCH_NAME == 'dev') || (env.GIT_BRANCH != null && env.GIT_BRANCH.contains('dev'))
+                }
+            }
             steps {
                 input message: 'Proceed with Terraform Apply?'
             }
@@ -112,7 +117,17 @@ pipeline {
         stage('6️⃣.1️⃣ Generate Ansible Inventory') {
             steps {
                 sh '''
-                    EC2_IP=$(terraform output -raw instance_public_ip)
+                    set -euo pipefail
+                    EC2_IP=""
+                    for i in {1..6}; do
+                      EC2_IP=$(terraform output -raw instance_public_ip 2>/dev/null || true)
+                      [ -n "$EC2_IP" ] && break || sleep 2
+                    done
+
+                    if [ -z "$EC2_IP" ]; then
+                      echo "ERROR: could not read instance_public_ip from terraform output"
+                      exit 1
+                    fi
 
                     mkdir -p ansible
                     rm -f ansible/inventory.ini
@@ -134,7 +149,18 @@ EOF
         stage('7️⃣ Wait for EC2 SSH') {
             steps {
                 sh '''
-                    EC2_IP=$(terraform output -raw instance_public_ip)
+                    set -euo pipefail
+                    EC2_IP=""
+                    for i in {1..6}; do
+                      EC2_IP=$(terraform output -raw instance_public_ip 2>/dev/null || true)
+                      [ -n "$EC2_IP" ] && break || sleep 2
+                    done
+
+                    if [ -z "$EC2_IP" ]; then
+                      echo "ERROR: could not read instance_public_ip from terraform output"
+                      exit 1
+                    fi
+
                     echo "⏳ Waiting for SSH on $EC2_IP..."
 
                     for i in {1..12}; do
@@ -161,9 +187,14 @@ EOF
         }
 
         // =====================================================
-        // 9️⃣ APPROVE ANSIBLE
+        // 9️⃣ APPROVE ANSIBLE (only on dev branch)
         // =====================================================
         stage('9️⃣ Approve Ansible') {
+            when {
+                expression {
+                    return (env.BRANCH_NAME == 'dev') || (env.GIT_BRANCH != null && env.GIT_BRANCH.contains('dev'))
+                }
+            }
             steps {
                 input message: 'Run Ansible Playbook?'
             }

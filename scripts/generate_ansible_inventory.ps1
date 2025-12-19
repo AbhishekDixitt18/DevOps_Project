@@ -23,9 +23,10 @@ if (-not (Test-Path $PrivateKeyPath)) {
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location (Join-Path $scriptDir '..')
 
-$tfJson = terraform output -json public_ips 2>$null
+ # Use the outputs defined in outputs.tf: 'instance_public_ips'
+$tfJson = terraform output -json instance_public_ips 2>$null
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tfJson)) {
-    Write-Error "Failed to get 'public_ips' from terraform output. Ensure you run this from the repo root and that terraform init has been executed."
+  Write-Error "Failed to get 'instance_public_ips' from terraform output. Ensure you run this from the repo root and that terraform init has been executed."
     exit 1
 }
 

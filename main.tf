@@ -125,18 +125,25 @@ resource "null_resource" "ansible_provision" {
 
   provisioner "local-exec" {
     command = <<EOT
-echo "Waiting for EC2 SSH to become available..."
 sleep 60
+echo "Waiting for EC2 SSH to become available..."
 
 EC2_IP=${aws_instance.example[0].public_ip}
 
-echo "Testing SSH connection to $EC2_IP ..."
-ssh -o StrictHostKeyChecking=no -i "${var.private_key_path}" ubuntu@$EC2_IP "echo SSH OK" || {
-    echo "SSH still not ready. Waiting more..."
-    sleep 30
-}
+# Retry until SSH is available (timeout after ~60s)
+retries=12
+count=0
+until ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i "${var.private_key_path}" ubuntu@$EC2_IP "echo SSH OK"; do
+  count=$((count+1))
+  if [ $count -ge $retries ]; then
+    echo "SSH did not become available after $((retries*5)) seconds"
+    exit 1
+  fi
+  echo "SSH not ready, sleeping 5s..."
+  sleep 5
+done
 
-./scripts/generate_ansible_inventory.sh "${var.private_key_path}" "./ansible/inventory.ini"
+./scripts/generate_ansible_inventory.sh "${var.private_key_path}" "./ansible/inventory.ini" "$EC2_IP"
 
 ansible-playbook -i ./ansible/inventory.ini ./ansible/playbook.yml
 EOT
