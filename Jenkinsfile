@@ -80,9 +80,14 @@ pipeline {
         }
 
         // =====================================================
-        // STAGE 5: APPROVE APPLY
+        // STAGE 5: APPROVE APPLY (only on dev branch)
         // =====================================================
         stage('5️⃣ Approve Terraform Apply') {
+            when {
+                expression {
+                    return (env.BRANCH_NAME == 'dev') || (env.GIT_BRANCH?.contains('dev'))
+                }
+            }
             steps {
                 input message: 'Proceed with Terraform Apply?'
             }
@@ -139,11 +144,17 @@ pipeline {
                 }
             }
         }
+        
 
         // =====================================================
-        // STAGE 9: APPROVE ANSIBLE
+        // STAGE 9: APPROVE ANSIBLE (only on dev branch)
         // =====================================================
         stage('9️⃣ Approve Ansible') {
+            when {
+                expression {
+                    return (env.BRANCH_NAME == 'dev') || (env.GIT_BRANCH?.contains('dev'))
+                }
+            }
             steps {
                 input message: 'Run Ansible Playbook?'
             }
