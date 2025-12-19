@@ -123,22 +123,22 @@ resource "null_resource" "ansible_provision" {
     aws_security_group.ssh
   ]
 
-  provisioner "local-exec" {
-    command = <<EOT
+provisioner "local-exec" {
+  command = <<EOT
 echo "Waiting for EC2 SSH to become available..."
 sleep 60
 
 EC2_IP=${aws_instance.example[0].public_ip}
 
 echo "Testing SSH connection to $EC2_IP ..."
-ssh -o StrictHostKeyChecking=no -i "${var.private_key_path}" ubuntu@$EC2_IP "echo SSH OK" || {
-    echo "SSH still not ready. Waiting more..."
-    sleep 30
-}
+ssh -o StrictHostKeyChecking=no -i "${var.private_key_path}" ubuntu@$EC2_IP "echo SSH OK"
 
-./scripts/generate_ansible_inventory.sh "${var.private_key_path}" "./ansible/inventory.ini"
+./scripts/generate_ansible_inventory.sh \
+"${var.private_key_path}" \
+"./ansible/inventory.ini" \
+"$EC2_IP"
 
 ansible-playbook -i ./ansible/inventory.ini ./ansible/playbook.yml
 EOT
-  }
+}
 }
