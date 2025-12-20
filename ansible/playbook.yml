@@ -4,16 +4,10 @@
   become: true
 
   tasks:
-    # -------------------------------
-    # Update system
-    # -------------------------------
     - name: Update apt cache
       ansible.builtin.apt:
         update_cache: yes
 
-    # -------------------------------
-    # Install required packages
-    # -------------------------------
     - name: Install required dependencies
       ansible.builtin.apt:
         name:
@@ -22,14 +16,10 @@
           - wget
         state: present
 
-    # -------------------------------
-    # Install Grafana
-    # -------------------------------
     - name: Add Grafana GPG key
-      ansible.builtin.shell: |
-        wget -q -O - https://packages.grafana.com/gpg.key | apt-key add -
-      args:
-        warn: false
+      ansible.builtin.apt_key:
+        url: https://packages.grafana.com/gpg.key
+        state: present
 
     - name: Add Grafana repository
       ansible.builtin.apt_repository:
@@ -48,9 +38,6 @@
         state: started
         enabled: true
 
-    # -------------------------------
-    # Install Prometheus
-    # -------------------------------
     - name: Install Prometheus
       ansible.builtin.apt:
         name: prometheus
@@ -62,9 +49,6 @@
         state: started
         enabled: true
 
-    # -------------------------------
-    # Wait for Grafana to be available
-    # -------------------------------
     - name: Wait for Grafana to come online
       ansible.builtin.wait_for:
         port: 3000
